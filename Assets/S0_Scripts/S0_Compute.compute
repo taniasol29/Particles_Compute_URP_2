@@ -1,0 +1,51 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel UpdateParticles
+#define EPSILON 1e-3
+#include "./SimplexNoise3D.hlsl"
+
+struct Particle
+{
+    float3 pPos;
+    float4 color;
+    float speed;
+};
+
+float _time;
+int _seed;
+
+RWStructuredBuffer <Particle> _particles;
+
+// Source: https://github.com/Robert-K/gpu-particles/blob/master/Assets/GPUParticles/Shaders/Compute%20Particles.compute
+float3 curlNoise(float3 coord)
+{
+    float3 dx = float3(EPSILON, 0.0, 0.0);
+    float3 dy = float3(0.0, EPSILON, 0.0);
+    float3 dz = float3(0.0, 0.0, EPSILON);
+
+    float3 dpdx0 = snoise(coord - dx);
+    float3 dpdx1 = snoise(coord + dx);
+    float3 dpdy0 = snoise(coord - dy);
+    float3 dpdy1 = snoise(coord + dy);
+    float3 dpdz0 = snoise(coord - dz);
+    float3 dpdz1 = snoise(coord + dz);
+
+    float x = dpdy1.z - dpdy0.z + dpdz1.y - dpdz0.y;
+    float y = dpdz1.x - dpdz0.x + dpdx1.z - dpdx0.z;
+    float z = dpdx1.y - dpdx0.y + dpdy1.x - dpdy0.x;
+
+    //return float3(x, y, z) / EPSILON * 2.0; // original
+    //return float3(-x, -y, z) / EPSILON * 2.0;
+    return float3(x, -y * 2.0, z) / EPSILON * 1.5;
+}
+
+[numthreads(1024,1,1)]
+void UpdateParticles(uint3 id : SV_DispatchThreadID)
+{
+    float3 pos = _particles[id.x].pPos;
+    float sp = _particles[id.x].speed;
+
+    pos += curlNoise((pos + _seed + _time * 0.01) * 0.01) * 0.01;
+    //pos += curlNoise((pos + _seed + _time * 0.01) * 0.4) * 0.01;
+
+    _particles[id.x].pPos = pos;
+}
